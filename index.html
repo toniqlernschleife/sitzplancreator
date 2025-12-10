@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sitzplan Creator</title>
+    <style>
+        :root {
+            --color-background-warm: #fdf6e3;
+            --color-text: #333;
+            --color-control-bg: #fff;
+            --color-border: #ccc;
+            --color-desk: #f3e5ab; /* Hellbeige */
+            --color-desk-border: #d2b48c;
+            --color-seat: #fff8dc;
+            --color-blackboard: #4a5d43;
+            --color-btn-primary: #709a80;
+            --color-btn-secondary: #f4a460;
+            --color-btn-danger: #e74c3c;
+            --color-blocked: #ffcccc;
+            --color-first-row: #b8860b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--color-background-warm);
+            color: var(--color-text);
+            margin: 0;
+            padding: 20px;
+            min-width: 800px; /* Mindestbreite für das Layout */
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+            color: #2c3e50;
+        }
+        
+        /* Flexbox-Container für Steuerung und Layout-Ansicht */
+        .sp-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            align-items: flex-start;
+        }
+
+        /* Steuerung (linke Spalte) */
+        .sp-controls {
+            flex: 0 0 280px; /* Feste Breite 280px */
+            padding: 20px;
+            background-color: var(--color-control-bg);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+
+        .sp-controls label {
+            display: block;
+            margin-top: 10px;
+            margin-bottom: 4px;
+            font-weight: bold;
+            font-size: 0.95rem;
+            color: #555;
+        }
+
+        .sp-controls input[type="text"], 
+        .sp-controls textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            margin-bottom: 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+
+        .sp-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.2s;
+            font-size: 1rem;
+        }
+        .sp-btn:hover { opacity: 0.9; }
+
+        .btn-primary { background-color: var(--color-btn-primary); }
+        .btn-secondary { background-color: var(--color-btn-secondary); margin-top: 15px; }
+        .btn-reset { background-color: #a0a0a0; margin-top: 15px; }
+        .btn-pdf { background-color: #4682b4; }
+
+        .sp-error {
+            color: var(--color-btn-danger);
+            background-color: var(--color-blocked);
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid var(--color-btn-danger);
+            border-radius: 4px;
+            font-size: 0.9em;
+            display: none;
+        }
+        
+        /* Layout-Ansicht (rechte Spalte) */
+        .sp-view {
+            flex: 1;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            background-color: #fff;
+            min-height: 800px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Raster der Tische */
+        .sp-grid {
+            flex-grow: 1;
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end; /* Spalten untenbündig */
+            gap: 15px;
+            padding-bottom: 30px;
+        }
+
+        .sp-col {
+            display: flex;
+            flex-direction: column-reverse; /* Wichtig: Erstes Element (1. Reihe) ist visuell unten */
+            gap: 20px;
+            flex: 1;
+            min-width: 120px;
+            padding: 5px;
+            border: 2px dashed transparent;
+            transition: border-color 0.2s;
+        }
+        
+        .sp-col.drag-over {
+            border-color: orange;
+            background-color: rgba(255, 165, 0, 0.05);
+        }
+
+        /* Dynamische 4. Spalte */
+        #col-4 { width: 0; min-width: 0; overflow: hidden; border: none; flex: 0; }
+        .sp-grid.show-col-4 #col-4 { 
+            width: auto; min-width: 120px; flex: 1; border: 2px dashed #eee; padding: 5px; 
+        }
+
+        /* Tafel */
+        .sp-blackboard {
+            width: 90%;
+            margin: 10px auto 0;
+            background-color: var(--color-blackboard);
+            color: white;
+            text-align: center;
+            padding: 12px;
+            border: 5px solid #5c4033;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* Tische (Desk) */
+        .desk {
+            background-color: var(--color-desk);
+            border: 2px solid var(--color-desk-border);
+            border-radius: 6px;
+            padding: 6px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            min-height: 60px;
+            cursor: grab;
+            position: relative;
+            user-select: none;
+            box-shadow: 1px 1px 4px rgba(0,0,0,0.15);
+            transition: box-shadow 0.2s;
+        }
+        .desk:hover {
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+        }
+
+        /* Vertikaler Tisch */
+        .desk.vertical {
+            flex-direction: column;
+            height: 140px;
+            width: 70px;
+            align-self: center;
+        }
+
+        /* Rotate Button */
+        .rotate-btn {
+            position: absolute;
+            top: -8px; right: -8px;
+            width: 20px; height: 20px;
+            background: #999; color: white;
+            border: none; border-radius: 50%;
+            font-size: 12px; line-height: 20px;
+            padding: 0; margin: 0;
+            cursor: pointer; z-index: 5;
+            text-align: center;
+        }
+
+        /* Sitze */
+        .seat {
+            background-color: var(--color-seat);
+            border: 1px solid var(--color-desk-border);
+            width: 45px; height: 40px;
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            cursor: grab;
+            transition: background 0.2s;
+        }
+
+        .seat.blocked {
+            background-color: var(--color-blocked);
+            color: #a00;
+            border-color: var(--color-btn-danger);
+        }
+
+        /* Markierung 1. Reihe */
+        .sp-col .desk:first-child {
+            border-color: var(--color-first-row); 
+        }
+        .sp-col .desk:first-child::after {
+            content: "1. Reihe";
+            position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+            font-size: 10px; color: var(--color-first-row); font-weight: bold; pointer-events: none;
+            width: max-content;
+        }
+        
+        .is-dragging { opacity: 0.5; }
+
+        /* Print Styles */
+        @media print {
+            body { background: white; padding: 0; min-width: auto; }
+            .sp-controls, h1 { display: none !important; }
+            .sp-container { display: block; max-width: 100%; }
+            .sp-view { flex: 1; padding: 10px; border: none; min-height: auto; }
+            .sp-grid { padding-bottom: 10px; }
+            
+            .desk { box-shadow: none; border-color: #888 !important; }
+            .seat { background-color: #f0f0f0 !important; border: 1px solid #aaa !important; }
+            .seat.blocked { background-color: #ddd !important; color: #555 !important; }
+            .sp-blackboard { background-color: #333 !important; color: white !important; border-color: #555 !important; }
+
+            /* Farben beibehalten für Druck */
+            .desk, .seat, .sp-blackboard { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+        }
+    </style>
+
+    <h1>Sitzplan Creator</h1>
+
+    <div class="sp-container">
+        <div class="sp-controls">
+            <label>Schülerliste</label>
+            <textarea id="inp-students" rows="5" placeholder="Anna&#10;Ben... (Pro Zeile oder Komma)"></textarea>
+
+            <label>🛑 Alleine-Sitzer</label>
+            <input type="text" id="inp-solo" placeholder="Max, Lea">
+
+            <label>👓 Erste-Reihe (Vorne)</label>
+            <input type="text" id="inp-front" placeholder="Moritz, Sara">
+
+            <label>❌ Nicht nebeneinander (Gruppe: Name1, Name2; Gruppe2: Name3, Name4)</label>
+            <textarea id="inp-no" rows="2" placeholder="Streithähne: A,B; Quassel: C,D"></textarea>
+
+            <label>❤️ Wunsch-Nachbarn ((Paar1, Paar2), (Paar3, Paar4))</label>
+            <input type="text" id="inp-wish" placeholder="(Lea, Sara), (Tim, Kai)">
+
+            <div id="sp-error" class="sp-error"></div>
+
+            <button class="sp-btn btn-primary" onclick="SP.roll()">🎲 Würfeln & Zuweisen</button>
+            <button class="sp-btn btn-secondary" onclick="SP.addDesk()">➕ Tisch hinzufügen</button>
+            <button class="sp-btn btn-reset" onclick="SP.clear()">🗑️ Sitze leeren</button>
+            <button class="sp-btn btn-pdf" onclick="window.print()">🖨️ PDF / Drucken</button>
+            
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="#" onclick="SP.resetLayout(); return false;" style="color:#888; font-size: 0.8rem;">Layout zurücksetzen</a>
+            </div>
+        </div>
+
+        <div class="sp-view">
+            <div class="sp-grid" id="sp-grid">
+                <div class="sp-col" id="col-1"></div>
+                <div class="sp-col" id="col-2"></div>
+                <div class="sp-col" id="col-3"></div>
+                <div class="sp-col" id="col-4"></div>
+            </div>
+            
+            <div class="sp-blackboard">TAFEL</div>
+        </div>
+    </div>
+
+    <script>
+        // Namespace SP um Kollisionen zu vermeiden
+        const SP = (function() {
+            let deskCounter = 16;
+            let draggedItem = null;
+            let initialLayout = {};
+
+            function init() {
+                // Initiales Layout erstellen
+                createDesks('col-1', 5, 1);
+                createDesks('col-2', 5, 6);
+                createDesks('col-3', 5, 11);
+                
+                // Layout speichern und Events binden
+                document.querySelectorAll('.sp-col').forEach(c => {
+                    initialLayout[c.id] = c.innerHTML;
+                    bindColEvents(c);
+                });
+                document.querySelectorAll('.desk').forEach(bindDeskEvents);
+            }
+
+            function createDesks(colId, num, start) {
+                let html = '';
+                for(let i=0; i<num; i++) {
+                    html += deskHTML('d-'+(start+i));
+                }
+                document.getElementById(colId).innerHTML = html;
+            }
+
+            function deskHTML(id) {
+                return `
+                <div class="desk" id="${id}" draggable="true">
+                    <button class="rotate-btn" onclick="SP.rotate(this)">↺</button>
+                    <div class="seat s1" draggable="true">?</div>
+                    <div class="seat s2" draggable="true">?</div>
+                </div>`;
+            }
+
+            // --- LOGIC ---
+            function roll() {
+                const err = document.getElementById('sp-error');
+                err.style.display='none'; err.innerHTML='';
+                
+                const getVal = id => document.getElementById(id).value;
+                const parseList = v => v.split(/[\n,;]+/).map(s=>s.trim()).filter(s=>s);
+
+                const students = shuffle(parseList(getVal('inp-students')));
+                const soloSet = new Set(parseList(getVal('inp-solo')));
+                const frontSet = new Set(parseList(getVal('inp-front')));
+                
+                const noGroups = getVal('inp-no').split(';').map(g=>{
+                    let p=g.split(':'); return p.length>1?p[1].split(',').map(s=>s.trim()):[];
+                }).filter(x=>x.length);
+
+                const wishes = (getVal('inp-wish').match(/\(([^)]+)\)/g)||[]).map(m=>
+                    m.replace(/[()]/g,'').split(',').map(s=>s.trim()).filter(s=>s)
+                );
+
+                if(!students.length) { alert('Keine Namen eingetragen.'); return; }
+
+                let seats = [];
+                document.querySelectorAll('.desk').forEach(d => {
+                    const col = d.parentElement;
+                    const isFront = (d === col.firstElementChild);
+                    [1,2].forEach(n => {
+                        seats.push({
+                            el: d.querySelector('.s'+n), deskId: d.id, seatNum: n, isFront: isFront, student: null, blocked: false
+                        });
+                    });
+                });
+
+                if(students.length > seats.length) {
+                    alert(`Zu viele Schüler (${students.length}) für ${seats.length} Plätze.`); return;
+                }
+
+                let unassigned = [...students];
+                let assigned = new Set();
+                
+                const place = (who, seat, blockN=false) => {
+                    seat.student = who; assigned.add(who); unassigned = unassigned.filter(x=>x!==who);
+                    if(blockN) {
+                        const n = seats.find(x=>x.deskId===seat.deskId && x.seatNum!==seat.seatNum);
+                        if(n) n.blocked=true;
+                    }
+                };
+                const free = subset => subset.filter(s=>!s.student && !s.blocked);
+
+                // Prio 1: Solo + Front
+                [...soloSet].filter(s=>frontSet.has(s)).forEach(s=>{ let opts=free(seats.filter(x=>x.isFront)); let dMap={}; opts.forEach(o=>{if(!dMap[o.deskId])dMap[o.deskId]=[];dMap[o.deskId].push(o)}); let done=false; for(let did in dMap) { if(dMap[did].length===2) { place(s,dMap[did][0],true); done=true; break; } } if(!done) {err.innerHTML+=`Kein Platz (Alleine+Vorne): ${s}<br>`;} });
+                if(err.innerHTML) err.style.display='block';
+
+                // Prio 2: Solo Rest
+                [...soloSet].filter(s=>!assigned.has(s)).forEach(s=>{ let opts=free(seats); let dMap={}; opts.forEach(o=>{if(!dMap[o.deskId])dMap[o.deskId]=[];dMap[o.deskId].push(o)}); let keys=Object.keys(dMap).sort(()=>0.5-Math.random()); let done=false; for(let did of keys) { if(dMap[did].length===2) { place(s,dMap[did][0],true); done=true; break; } } if(!done) { err.style.display='block'; err.innerHTML+=`Kein Platz (Alleine): ${s}<br>`; } });
+
+                // Prio 3: Front Rest
+                [...frontSet].filter(s=>!assigned.has(s)).forEach(s=>{ let opts=free(seats.filter(x=>x.isFront)); if(opts.length) place(s, opts[Math.floor(Math.random()*opts.length)]); else { let fb=free(seats); if(fb.length) place(s,fb[0]); else { err.style.display='block'; err.innerHTML+=`Kein Platz: ${s}<br>`; } } });
+
+                // Prio 4: Wishes
+                for(let pair of wishes) { let [p1,p2] = pair; if(!p1||!p2) continue; let h1=assigned.has(p1), h2=assigned.has(p2); if(!h1 && !h2) { let opts=free(seats); let dMap={}; opts.forEach(o=>{if(!dMap[o.deskId])dMap[o.deskId]=[];dMap[o.deskId].push(o)}); for(let did in dMap) { if(dMap[did].length===2) { place(p1,dMap[did][0]); place(p2,dMap[did][1]); break; } } } else if(h1 && !h2) { let s1=seats.find(x=>x.student===p1); let n=seats.find(x=>x.deskId===s1.deskId && x.seatNum!==s1.seatNum); if(n && !n.student && !n.blocked) place(p2,n); } else if(!h1 && h2) { let s2=seats.find(x=>x.student===p2); let n=seats.find(x=>x.deskId===s2.deskId && x.seatNum!==s2.seatNum); if(n && !n.student && !n.blocked) place(p1,n); } }
+
+                // Prio 5: Rest
+                for(let s of unassigned) { let cands=shuffle(free(seats)); let done=false; for(let cand of cands) { let n=seats.find(x=>x.deskId===cand.deskId && x.seatNum!==cand.seatNum); let confl=false; if(n && n.student) { for(let g of noGroups) { if(g.includes(s)&&g.includes(n.student)){confl=true;break;} } } if(!confl) { place(s,cand); done=true; break; } } if(!done && cands.length) place(s,cands[0]); }
+                
+                // Render
+                seats.forEach(x => {
+                    x.el.classList.remove('blocked');
+                    if(x.student) { x.el.textContent=x.student; x.el.title=x.student; }
+                    else if(x.blocked) { x.el.textContent='X'; x.el.classList.add('blocked'); }
+                    else { x.el.textContent='?'; x.el.title=''; }
+                });
+            }
+
+            function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+            // --- UI EVENTS ---
+            function addDesk() {
+                const d = document.createElement('div');
+                d.innerHTML = deskHTML('d-new-'+(deskCounter++));
+                const newD = d.firstElementChild;
+                document.getElementById('col-1').appendChild(newD);
+                bindDeskEvents(newD);
+                checkCol4();
+            }
+            
+            function clear() { document.querySelectorAll('.seat').forEach(s=>{s.textContent='?';s.title='';s.classList.remove('blocked')}); document.getElementById('sp-error').style.display='none'; }
+            function rotate(btn) { btn.parentElement.classList.toggle('vertical'); }
+
+            function resetLayout() {
+                if(!confirm('Möchten Sie das Layout auf den Standard zurücksetzen? Alle manuellen Änderungen gehen verloren.')) return;
+                document.querySelectorAll('.sp-col').forEach(c=>{
+                    if(initialLayout[c.id]) { c.innerHTML=initialLayout[c.id]; bindColEvents(c); }
+                });
+                document.querySelectorAll('.desk').forEach(bindDeskEvents);
+                checkCol4();
+            }
+
+            function checkCol4() {
+                const c4=document.getElementById('col-4');
+                const grid=document.getElementById('sp-grid');
+                if(c4.children.length>0) grid.classList.add('show-col-4');
+                else grid.classList.remove('show-col-4');
+            }
+
+            // Drag Drop
+            function bindColEvents(col) {
+                col.ondragover = e => {
+                    e.preventDefault();
+                    if(draggedItem && draggedItem.classList.contains('desk')) {
+                        col.classList.add('drag-over');
+                        const after = getDragAfter(col, e.clientY);
+                        if(!after) col.appendChild(draggedItem); else col.insertBefore(draggedItem, after);
+                    }
+                };
+                col.ondragleave = () => col.classList.remove('drag-over');
+                col.ondrop = e => { e.preventDefault(); col.classList.remove('drag-over'); checkCol4(); };
+                Array.from(col.children).forEach(bindDeskEvents);
+            }
+
+            function bindDeskEvents(desk) {
+                const btn = desk.querySelector('.rotate-btn');
+                if(btn) btn.onclick = () => desk.classList.toggle('vertical');
+                
+                desk.ondragstart = e => {
+                    if(e.target.classList.contains('seat')) return;
+                    draggedItem=desk; e.dataTransfer.setData('type','desk');
+                    setTimeout(()=>desk.classList.add('is-dragging'),0);
+                };
+                desk.ondragend = () => { desk.classList.remove('is-dragging'); draggedItem=null; document.querySelectorAll('.sp-col').forEach(c=>c.classList.remove('drag-over')); checkCol4(); };
+                
+                desk.querySelectorAll('.seat').forEach(s => {
+                    s.ondragstart = e => { e.stopPropagation(); draggedItem=s; setTimeout(()=>s.classList.add('is-dragging'),0); };
+                    s.ondragend = () => { s.classList.remove('is-dragging'); draggedItem=null; };
+                    s.ondragover = e => e.preventDefault();
+                    s.ondrop = e => {
+                        e.preventDefault(); e.stopPropagation();
+                        if(draggedItem && draggedItem.classList.contains('seat')) {
+                            const txt=s.textContent, tit=s.title, cls=s.className;
+                            s.textContent=draggedItem.textContent; s.title=draggedItem.title; s.className=draggedItem.className;
+                            draggedItem.textContent=txt; draggedItem.title=tit; draggedItem.className=cls;
+                            s.classList.remove('is-dragging'); draggedItem.classList.remove('is-dragging');
+                        }
+                    };
+                });
+            }
+
+            function getDragAfter(col, y) {
+                const els = [...col.querySelectorAll('.desk:not(.is-dragging)')];
+                return els.reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if(offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                    else return closest;
+                }, { offset: Number.NEGATIVE_INFINITY }).element;
+            }
+
+            setTimeout(init, 100);
+
+            return { roll, clear, addDesk, rotate, resetLayout };
+        })();
+    </script>
+
+</body>
+</html>
